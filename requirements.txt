@@ -1,3 +1,4 @@
+pip install --upgrade streamlit
 streamlit>=1.35.0
 firebase-admin
 pandas
