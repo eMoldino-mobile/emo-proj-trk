@@ -51,7 +51,7 @@ def login_user(email, password):
         st.session_state.logged_in = True
         st.session_state.user_email = user.email
         st.session_state.role = st.secrets["user_roles"].get(user.email, "readonly")
-        st.rerun()
+        # st.rerun() is removed as it's a no-op in a callback
     except Exception as e:
         st.error(f"Login Failed: {e}")
 
@@ -59,7 +59,7 @@ def logout_user():
     """Logs out the current user."""
     for key in list(st.session_state.keys()):
         del st.session_state[key]
-    st.rerun()
+    # st.rerun() is removed as it's a no-op in a callback
 
 # --- Data Fetching ---
 @st.cache_data(ttl=60)
@@ -77,6 +77,7 @@ if not st.session_state.get('logged_in'):
         password = st.text_input("Password", type="password")
         if st.form_submit_button("Login"):
             login_user(email, password)
+            st.rerun() # Rerun is called here, outside the callback
 else:
     # --- Main Dashboard UI ---
     st.sidebar.title("Dashboard Menu")
