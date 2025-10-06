@@ -46,8 +46,8 @@ db = initialize_firebase()
 def login_user(email, password):
     """Authenticates a user."""
     try:
+        # NOTE: This is a simplified login. For production, use Firebase Client SDKs or custom tokens.
         user = firebase_auth.get_user_by_email(email)
-        # Simplified login - does not verify password.
         st.session_state.logged_in = True
         st.session_state.user_email = user.email
         st.session_state.role = st.secrets["user_roles"].get(user.email, "readonly")
@@ -87,10 +87,21 @@ else:
     st.title("eMOLDINO Project Dashboard")
 
     projects_df = pd.DataFrame(fetch_collection("projects"))
+    
+    # Robustly handle data types and sorting
     if not projects_df.empty:
-        projects_df['firstContact'] = pd.to_datetime(projects_df.get('firstContact'), errors='coerce')
-        projects_df['lastActivity'] = pd.to_datetime(projects_df.get('lastActivity'), errors='coerce').fillna(pd.Timestamp.min)
-        projects_df = projects_df.sort_values(by='lastActivity', ascending=False)
+        if 'firstContact' in projects_df.columns:
+            projects_df['firstContact'] = pd.to_datetime(projects_df['firstContact'], errors='coerce')
+        
+        # Ensure lastActivity column exists before trying to sort by it
+        if 'lastActivity' in projects_df.columns:
+            projects_df['lastActivity'] = pd.to_datetime(projects_df['lastActivity'], errors='coerce')
+            # Fill any null/NaT values with a very old date to ensure they sort last
+            projects_df['lastActivity'] = projects_df['lastActivity'].fillna(pd.Timestamp.min)
+            projects_df = projects_df.sort_values(by='lastActivity', ascending=False)
+        else:
+            # If the column doesn't exist at all, add it with default values
+            projects_df['lastActivity'] = pd.Timestamp.min
     
     settings_data = {
         'regions': sorted([item.get('name', '') for item in fetch_collection("regions")]),
@@ -121,7 +132,7 @@ else:
                 st.subheader("Project Status Overview")
                 status_counts = summary_data['status'].value_counts().reset_index(name='count')
                 chart = alt.Chart(status_counts).mark_arc(innerRadius=50).encode(
-                    theta='count:Q', color='status:N'
+                    theta='count:Q', color=alt.Color('status:N', title="Status")
                 ).interactive()
                 st.altair_chart(chart, use_container_width=True)
         else:
@@ -145,8 +156,8 @@ else:
         st.dataframe(filtered_data.drop(columns=['id', 'quantities', 'lastActivity'], errors='ignore'), use_container_width=True)
 
     with npi_tab:
-        render_project_page("NPI", projects_df[projects_df['isNPI'] == "Yes"] if not projects_df.empty else pd.DataFrame())
+        render_project_page("NPI", projects_df[projects_df['isNPI'] == "Yes"] if not projects_df.empty and 'isNPI' in projects_df.columns else pd.DataFrame())
 
     with retrofit_tab:
-        render_project_page("Retrofit", projects_df[projects_df['isNPI'] == "No"] if not projects_df.empty else pd.DataFrame())
+        render_project_page("Retrofit", projects_df[projects_df['isNPI'] == "No"] if not projects_df.empty and 'isNPI' in projects_df.columns else pd.DataFrame())
 
