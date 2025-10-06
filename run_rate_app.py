@@ -14,7 +14,6 @@ st.set_page_config(
 )
 
 # --- Custom Styling ---
-# Injects CSS to replicate the look and feel of the HTML prototype
 st.markdown("""
 <style>
     /* General Dark Theme */
@@ -30,7 +29,7 @@ st.markdown("""
     .st-emotion-cache-16txtl3 {
         padding-top: 2rem;
     }
-    h1, h2, h3 {
+    h1, h2, h3, h4 {
         color: #f9fafb; /* text-gray-50 */
     }
     p, .st-emotion-cache-1r4qj8v {
@@ -102,7 +101,6 @@ def initialize_firebase():
                 creds_dict = json.loads(creds_raw)
             else:
                 creds_dict = dict(creds_raw)
-            # Ensure private_key format is correct
             if "private_key" in creds_dict:
                 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
             
@@ -120,9 +118,7 @@ def login_user(email, password):
     """Logs in the user and sets session state."""
     try:
         user = firebase_auth.get_user_by_email(email)
-        # Note: In a real app, you'd verify the password.
-        # Firebase Admin SDK doesn't verify passwords; it manages users.
-        # This is a mock verification for demonstration.
+        # Mock verification for demonstration. In a real app, you'd handle password verification.
         st.session_state.logged_in = True
         st.session_state.user_email = user.email
         st.session_state.role = st.secrets["user_roles"].get(user.email, "readonly")
@@ -151,14 +147,13 @@ def fetch_comments(_project_id):
 
 # --- UI MODALS & DIALOGS ---
 def project_dialog(project_data, settings_data):
-    """Renders the Add/Edit Project dialog."""
+    """Renders the Add/Edit Project form content."""
     is_new = project_data.get('id') is None
     title = "Add New Project" if is_new else "Edit Project"
 
     with st.form("project_form"):
         st.subheader(title)
         
-        # Determine if form should be disabled
         is_disabled = st.session_state.role == 'readonly'
         
         supplierName = st.selectbox(
@@ -170,7 +165,6 @@ def project_dialog(project_data, settings_data):
         poRef = c1.text_input("PO Reference", project_data.get('poRef', ''), disabled=is_disabled)
         
         contact_date = project_data.get('firstContact')
-        # Ensure contact_date is a Python date object for the widget
         if isinstance(contact_date, datetime):
             contact_val = contact_date.date()
         elif isinstance(contact_date, date):
@@ -199,10 +193,8 @@ def project_dialog(project_data, settings_data):
             bundled = cols[1].checkbox("Bundled", value=quantities.get(key, {}).get('bundled', False), key=f"bundle_{key}", disabled=is_disabled)
             new_quantities[key] = {'qty': qty, 'bundled': bundled}
             
-        # Only show save button for editors
         if not is_disabled:
             if st.form_submit_button("Save Project", use_container_width=True, type="primary"):
-                # Convert date back to datetime for Firestore
                 firstContact_dt = datetime.combine(firstContact, datetime.min.time())
                 payload = {"supplierName": supplierName, "poRef": poRef, "firstContact": firstContact_dt, "mainPoc": mainPoc, "region": region, "isNPI": isNPI, "businessArea": businessArea, "status": status, "quantities": new_quantities, "lastActivity": firestore.SERVER_TIMESTAMP}
                 try:
@@ -219,13 +211,12 @@ def project_dialog(project_data, settings_data):
                 except Exception as e:
                     st.error(f"Error saving project: {e}")
 
-    # --- Comments section inside the dialog ---
     if not is_new:
         st.markdown("---")
         st.subheader("Comments")
         comments = fetch_comments(project_data['id'])
         with st.container(height=200):
-            for c in reversed(comments): # Show newest first
+            for c in reversed(comments):
                 timestamp_str = c.get('timestamp', datetime.now()).strftime('%Y-%m-%d %H:%M')
                 user_str = c.get('user', '...').split('@')[0]
                 st.markdown(f"**{user_str}** <small>({timestamp_str})</small>: {c.get('text', '')}", unsafe_allow_html=True)
@@ -240,8 +231,7 @@ def project_dialog(project_data, settings_data):
                     st.rerun()
 
 def settings_dialog(settings):
-    """Renders the settings management dialog."""
-    st.header("Manage Dropdown Lists")
+    """Renders the settings management content."""
     cols = st.columns(4)
     setting_map = {"suppliers": "Suppliers", "statuses": "Statuses", "regions": "Regions", "pocs": "POCs"}
     
@@ -265,7 +255,6 @@ def settings_dialog(settings):
                     st.cache_data.clear()
                     st.rerun()
 
-
 # --- Charting Functions ---
 def create_chart(data, x_col, y_col, title, chart_type='bar'):
     """Helper function to create an Altair chart."""
@@ -277,7 +266,7 @@ def create_chart(data, x_col, y_col, title, chart_type='bar'):
         )
     elif chart_type == 'line':
         chart = alt.Chart(data).mark_line(point=True).encode(
-            x=alt.X(f'{x_col}:O', title=None), # Ordinal for time-based labels
+            x=alt.X(f'{x_col}:O', title=None),
             y=alt.Y(f'{y_col}:Q', title=None),
             tooltip=[x_col, y_col]
         )
@@ -295,10 +284,8 @@ def create_chart(data, x_col, y_col, title, chart_type='bar'):
         labelColor='#d1d5db', titleColor='#d1d5db'
     )
 
-
 # --- MAIN APP LOGIC ---
 if not st.session_state.get('logged_in'):
-    # --- Login Screen ---
     st.markdown('<div class="login-container">', unsafe_allow_html=True)
     st.title("eMOLDINO")
     st.header("Project Dashboard Login")
@@ -309,8 +296,6 @@ if not st.session_state.get('logged_in'):
             login_user(email, password)
     st.markdown('</div>', unsafe_allow_html=True)
 else:
-    # --- Main Dashboard UI ---
-    
     # Fetch all data once
     projects_df = pd.DataFrame(fetch_collection("projects"))
     if not projects_df.empty:
@@ -339,160 +324,152 @@ else:
     
     st.markdown("---")
 
-    # --- Dialogs ---
+    # --- MODAL/DIALOG REPLACEMENT (STABLE FIX) ---
+    # This block replaces the st.dialog() calls with a conditional rendering pattern
     if st.session_state.get('show_project_dialog'):
-        with st.dialog("Manage Project", on_dismiss=lambda: st.session_state.update(show_project_dialog=False)):
+        with st.container(border=True):
             project_dialog(st.session_state.get('editing_project', {}), settings_data)
-            
-    if st.session_state.get('show_settings_dialog'):
-        with st.dialog("Settings", on_dismiss=lambda: st.session_state.update(show_settings_dialog=False)):
+            if st.button("Close Window", key="close_project"):
+                st.session_state.show_project_dialog = False
+                st.rerun()
+    elif st.session_state.get('show_settings_dialog'):
+        with st.container(border=True):
+            st.markdown("### ⚙️ Settings")
             settings_dialog(settings_data)
+            if st.button("Close Settings", key="close_settings"):
+                st.session_state.show_settings_dialog = False
+                st.rerun()
+    else:
+        # --- Main Content Tabs (only show if no "dialog" is open) ---
+        summary_tab, npi_tab, retrofit_tab = st.tabs(["Executive Summary", "NPI Projects", "Retrofit Projects"])
 
-    # --- Main Content Tabs ---
-    summary_tab, npi_tab, retrofit_tab = st.tabs(["Executive Summary", "NPI Projects", "Retrofit Projects"])
+        with summary_tab:
+            st.header("Executive Summary")
+            if not projects_df.empty:
+                summary_df = projects_df.copy()
+                summary_df['sensor_qty'] = summary_df['quantities'].apply(lambda q: q.get('sensor', {}).get('qty', 0) if isinstance(q, dict) else 0)
 
-    with summary_tab:
-        st.header("Executive Summary")
-        if not projects_df.empty:
-            summary_df = projects_df.copy()
-            # Unpack quantities for easier analysis
-            summary_df['sensor_qty'] = summary_df['quantities'].apply(lambda q: q.get('sensor', {}).get('qty', 0) if isinstance(q, dict) else 0)
-
-            c1, c2 = st.columns(2)
-            business_filter = c1.radio("Filter by Business Area", ["All", "External", "Internal"], horizontal=True, key="summary_business_filter")
-            
-            if business_filter != "All":
-                summary_df = summary_df[summary_df['businessArea'] == business_filter]
+                business_filter = st.radio("Filter by Business Area", ["All", "External", "Internal"], horizontal=True, key="summary_business_filter")
                 
-            c1, c2 = st.columns(2)
-            with c1:
-                # Chart 1: Total Sensors by Region
-                sensors_by_region = summary_df.groupby('region')['sensor_qty'].sum().reset_index()
-                st.altair_chart(create_chart(sensors_by_region, 'region', 'sensor_qty', 'Total Sensors by Region'), use_container_width=True)
+                if business_filter != "All":
+                    summary_df = summary_df[summary_df['businessArea'] == business_filter]
+                    
+                c1, c2 = st.columns(2)
+                with c1:
+                    sensors_by_region = summary_df.groupby('region')['sensor_qty'].sum().reset_index()
+                    st.altair_chart(create_chart(sensors_by_region, 'region', 'sensor_qty', 'Total Sensors by Region'), use_container_width=True)
+                    
+                    new_projects = summary_df.copy()
+                    new_projects['quarter'] = new_projects['firstContact'].dt.to_period('Q').astype(str)
+                    projects_by_quarter = new_projects.groupby('quarter').size().reset_index(name='count')
+                    st.altair_chart(create_chart(projects_by_quarter, 'quarter', 'count', 'New Projects by Quarter', 'line'), use_container_width=True)
+
+                with c2:
+                    status_counts = summary_df['status'].value_counts().reset_index()
+                    status_counts.columns = ['status', 'count']
+                    st.altair_chart(create_chart(status_counts, 'status', 'count', 'Project Status Overview', 'donut'), use_container_width=True)
+                    
+                    workload_by_poc = summary_df['mainPoc'].value_counts().reset_index()
+                    workload_by_poc.columns = ['mainPoc', 'count']
+                    st.altair_chart(create_chart(workload_by_poc, 'mainPoc', 'count', 'Workload by POC'), use_container_width=True)
+            else:
+                st.info("No project data to display.")
+
+        def render_project_page(project_type, data):
+            with st.expander("🔍 Filters"):
+                f_cols = st.columns([2, 2, 2, 1])
+                region_filter = f_cols[0].selectbox("Region", ["All"] + settings_data['regions'], key=f"{project_type}_region")
+                poc_filter = f_cols[1].selectbox("POC", ["All"] + settings_data['pocs'], key=f"{project_type}_poc")
                 
-                # Chart 3: New Projects by Quarter
-                new_projects = summary_df.copy()
-                new_projects['quarter'] = new_projects['firstContact'].dt.to_period('Q').astype(str)
-                projects_by_quarter = new_projects.groupby('quarter').size().reset_index(name='count')
-                st.altair_chart(create_chart(projects_by_quarter, 'quarter', 'count', 'New Projects by Quarter', 'line'), use_container_width=True)
+                pricing_filter_options = {"All": "All", "Bundled": True, "Not Bundled": False}
+                pricing_filter = f_cols[2].radio("Pricing", pricing_filter_options.keys(), horizontal=True, key=f"{project_type}_pricing")
 
-            with c2:
-                # Chart 2: Project Status Overview
-                status_counts = summary_df['status'].value_counts().reset_index()
-                status_counts.columns = ['status', 'count']
-                st.altair_chart(create_chart(status_counts, 'status', 'count', 'Project Status Overview', 'donut'), use_container_width=True)
+                filtered_data = data.copy()
+                if region_filter != "All":
+                    filtered_data = filtered_data[filtered_data['region'] == region_filter]
+                if poc_filter != "All":
+                    filtered_data = filtered_data[filtered_data['mainPoc'] == poc_filter]
+                if pricing_filter != "All":
+                    filtered_data['has_bundled'] = filtered_data['quantities'].apply(
+                        lambda q: any(item.get('bundled', False) for item in q.values()) if isinstance(q, dict) else False
+                    )
+                    filtered_data = filtered_data[filtered_data['has_bundled'] == pricing_filter_options[pricing_filter]]
+            
+            v_cols = st.columns([3, 1, 1])
+            business_area_filter = v_cols[0].radio("Business Area", ["All", "External", "Internal"], horizontal=True, key=f"{project_type}_business")
+            if business_area_filter != "All":
+                filtered_data = filtered_data[filtered_data['businessArea'] == business_area_filter]
                 
-                # Chart 4: Workload by POC
-                workload_by_poc = summary_df['mainPoc'].value_counts().reset_index()
-                workload_by_poc.columns = ['mainPoc', 'count']
-                st.altair_chart(create_chart(workload_by_poc, 'mainPoc', 'count', 'Workload by POC'), use_container_width=True)
-        else:
-            st.info("No project data to display.")
+            view_type = v_cols[1].radio("View As", ["Grid", "Table"], horizontal=True, key=f"{project_type}_view")
 
-    def render_project_page(project_type, data):
-        """Renders the NPI or Retrofit project page with filtering and views."""
-        
-        # --- Filters ---
-        with st.expander("🔍 Filters"):
-            f_cols = st.columns([2, 2, 2, 1])
-            region_filter = f_cols[0].selectbox("Region", ["All"] + settings_data['regions'], key=f"{project_type}_region")
-            poc_filter = f_cols[1].selectbox("POC", ["All"] + settings_data['pocs'], key=f"{project_type}_poc")
-            
-            pricing_filter_options = {"All": "All", "Bundled": True, "Not Bundled": False}
-            pricing_filter = f_cols[2].radio("Pricing", pricing_filter_options.keys(), horizontal=True, key=f"{project_type}_pricing")
+            csv = filtered_data.to_csv(index=False).encode('utf-8')
+            v_cols[2].download_button(
+                label="📥 Export CSV",
+                data=csv,
+                file_name=f'{project_type}_projects.csv',
+                mime='text/csv',
+                use_container_width=True
+            )
+            st.markdown("---")
 
-            # Apply filters
-            filtered_data = data.copy()
-            if region_filter != "All":
-                filtered_data = filtered_data[filtered_data['region'] == region_filter]
-            if poc_filter != "All":
-                filtered_data = filtered_data[filtered_data['mainPoc'] == poc_filter]
-            if pricing_filter != "All":
-                filtered_data['has_bundled'] = filtered_data['quantities'].apply(
-                    lambda q: any(item.get('bundled', False) for item in q.values()) if isinstance(q, dict) else False
-                )
-                filtered_data = filtered_data[filtered_data['has_bundled'] == pricing_filter_options[pricing_filter]]
-        
-        # --- View Toggles and Export ---
-        v_cols = st.columns([3, 1, 1])
-        business_area_filter = v_cols[0].radio("Business Area", ["All", "External", "Internal"], horizontal=True, key=f"{project_type}_business")
-        if business_area_filter != "All":
-            filtered_data = filtered_data[filtered_data['businessArea'] == business_area_filter]
-            
-        view_type = v_cols[1].radio("View As", ["Grid", "Table"], horizontal=True, key=f"{project_type}_view")
+            if filtered_data.empty:
+                st.info("No projects match the current filters.")
+                return
 
-        # Export Button
-        csv = filtered_data.to_csv(index=False).encode('utf-8')
-        v_cols[2].download_button(
-            label="📥 Export CSV",
-            data=csv,
-            file_name=f'{project_type}_projects.csv',
-            mime='text/csv',
-            use_container_width=True
-        )
-        st.markdown("---")
+            if view_type == "Grid":
+                cols = st.columns(3)
+                for i, p_series in filtered_data.iterrows():
+                    with cols[i % 3]:
+                        with st.container(border=True):
+                            c1, c2 = st.columns([4, 1])
+                            c1.markdown(f"**{p_series.get('supplierName', 'N/A')}**")
+                            if st.session_state.role == 'editor':
+                               if c2.button("✏️", key=f"edit_grid_{p_series['id']}", help="Edit Project"):
+                                    st.session_state.editing_project = p_series.to_dict()
+                                    st.session_state.show_project_dialog = True
+                                    st.rerun()
 
-        if filtered_data.empty:
-            st.info("No projects match the current filters.")
-            return
-
-        # --- Render Views ---
-        if view_type == "Grid":
-            cols = st.columns(3)
-            for i, p_series in filtered_data.iterrows():
-                with cols[i % 3]:
-                    with st.container(border=True):
-                        c1, c2 = st.columns([4, 1])
-                        c1.markdown(f"**{p_series.get('supplierName', 'N/A')}**")
-                        if st.session_state.role == 'editor':
-                           if c2.button("✏️", key=f"edit_grid_{p_series['id']}", help="Edit Project"):
-                                st.session_state.editing_project = p_series.to_dict()
-                                st.session_state.show_project_dialog = True
-                                st.rerun()
-
-                        st.info(f"Status: {p_series.get('status', 'N/A')}")
-                        st.write(f"POC: {p_series.get('mainPoc', 'N/A')}")
-                        
-                        comments = fetch_comments(p_series['id'])
-                        with st.expander(f"Comments ({len(comments)})"):
-                            if comments:
-                                # Show latest 3 comments
-                                for c in sorted(comments, key=lambda x: x['timestamp'], reverse=True)[:3]:
-                                    st.text(f"{c.get('user', '...').split('@')[0]}: {c.get('text', '')}")
-                            else:
-                                st.write("No comments yet.")
-                                
-        else: # Table View
-            # Manually build table to include buttons
-            header_cols = st.columns([3, 2, 2, 2, 1])
-            headers = ["Supplier", "Status", "POC", "Region", "Actions"]
-            for col, header in zip(header_cols, headers):
-                col.markdown(f"**{header}**")
-            
-            st.markdown("<hr style='margin-top: 0; margin-bottom: 0.5rem;'>", unsafe_allow_html=True)
-            
-            for i, row in filtered_data.iterrows():
-                row_cols = st.columns([3, 2, 2, 2, 1])
-                row_cols[0].write(row.get('supplierName', 'N/A'))
-                row_cols[1].write(row.get('status', 'N/A'))
-                row_cols[2].write(row.get('mainPoc', 'N/A'))
-                row_cols[3].write(row.get('region', 'N/A'))
+                            st.info(f"Status: {p_series.get('status', 'N/A')}")
+                            st.write(f"POC: {p_series.get('mainPoc', 'N/A')}")
+                            
+                            comments = fetch_comments(p_series['id'])
+                            with st.expander(f"Comments ({len(comments)})"):
+                                if comments:
+                                    for c in sorted(comments, key=lambda x: x['timestamp'], reverse=True)[:3]:
+                                        st.text(f"{c.get('user', '...').split('@')[0]}: {c.get('text', '')}")
+                                else:
+                                    st.write("No comments yet.")
+                                    
+            else: # Table View
+                header_cols = st.columns([3, 2, 2, 2, 1])
+                headers = ["Supplier", "Status", "POC", "Region", "Actions"]
+                for col, header in zip(header_cols, headers):
+                    col.markdown(f"**{header}**")
                 
-                if row_cols[4].button("View/Edit", key=f"edit_table_{row['id']}", use_container_width=True):
-                    st.session_state.editing_project = row.to_dict()
-                    st.session_state.show_project_dialog = True
-                    st.rerun()
-                st.markdown("<hr style='margin-top: 0.5rem; margin-bottom: 0.5rem;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin-top: 0; margin-bottom: 0.5rem;'>", unsafe_allow_html=True)
+                
+                for i, row in filtered_data.iterrows():
+                    row_cols = st.columns([3, 2, 2, 2, 1])
+                    row_cols[0].write(row.get('supplierName', 'N/A'))
+                    row_cols[1].write(row.get('status', 'N/A'))
+                    row_cols[2].write(row.get('mainPoc', 'N/A'))
+                    row_cols[3].write(row.get('region', 'N/A'))
+                    
+                    if row_cols[4].button("View/Edit", key=f"edit_table_{row['id']}", use_container_width=True):
+                        st.session_state.editing_project = row.to_dict()
+                        st.session_state.show_project_dialog = True
+                        st.rerun()
+                    st.markdown("<hr style='margin-top: 0.5rem; margin-bottom: 0.5rem;'>", unsafe_allow_html=True)
 
+        with npi_tab:
+            if not projects_df.empty and 'isNPI' in projects_df.columns:
+                render_project_page("NPI", projects_df[projects_df['isNPI'] == "Yes"])
+            else:
+                st.info("No NPI projects found.")
 
-    with npi_tab:
-        if not projects_df.empty and 'isNPI' in projects_df.columns:
-            render_project_page("NPI", projects_df[projects_df['isNPI'] == "Yes"])
-        else:
-            st.info("No NPI projects found.")
+        with retrofit_tab:
+            if not projects_df.empty and 'isNPI' in projects_df.columns:
+                render_project_page("Retrofit", projects_df[projects_df['isNPI'] == "No"])
+            else:
+                st.info("No Retrofit projects found.")
 
-    with retrofit_tab:
-        if not projects_df.empty and 'isNPI' in projects_df.columns:
-            render_project_page("Retrofit", projects_df[projects_df['isNPI'] == "No"])
-        else:
-            st.info("No Retrofit projects found.")
