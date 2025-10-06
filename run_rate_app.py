@@ -94,15 +94,14 @@ else:
         if 'firstContact' in projects_df.columns:
             projects_df['firstContact'] = pd.to_datetime(projects_df['firstContact'], errors='coerce')
         
-        # Ensure lastActivity column exists before trying to sort by it
+        # FIX: Ensure lastActivity column exists and sort safely
         if 'lastActivity' in projects_df.columns:
             projects_df['lastActivity'] = pd.to_datetime(projects_df['lastActivity'], errors='coerce')
-            # Fill any null/NaT values with a very old date to ensure they sort last
-            projects_df['lastActivity'] = projects_df['lastActivity'].fillna(pd.Timestamp.min)
-            projects_df = projects_df.sort_values(by='lastActivity', ascending=False)
+            # Sort with NaT values placed at the end
+            projects_df = projects_df.sort_values(by='lastActivity', ascending=False, na_position='last')
         else:
-            # If the column doesn't exist at all, add it with default values
-            projects_df['lastActivity'] = pd.Timestamp.min
+            # If the column doesn't exist, create it to prevent future errors
+            projects_df['lastActivity'] = pd.NaT
     
     settings_data = {
         'regions': sorted([item.get('name', '') for item in fetch_collection("regions")]),
